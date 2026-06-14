@@ -94,21 +94,39 @@ export default function AliasesPage() {
   }
 
   async function loadReassignPreview() {
-    const res = await fetch("/api/reassign");
+    setError("");
+    const res  = await fetch("/api/reassign");
     const data = await res.json();
+    if (!res.ok || data.error) {
+      setError(`Vorschau fehlgeschlagen: ${data.error ?? res.statusText}`);
+      return;
+    }
     setPreview(data);
   }
 
   async function runReassign() {
     if (!preview) return;
     if (!confirm(`${preview.changes} Zeilen werden aktualisiert. Fortfahren?`)) return;
+    setError("");
     setReassigning(true);
-    const res = await fetch("/api/reassign", { method: "POST" });
+
+    const res  = await fetch("/api/reassign", { method: "POST" });
     const data = await res.json();
     setReassigning(false);
     setPreview(null);
-    setStatus(`✓ ${data.updated} Zeilen wurden neu zugeordnet.`);
-    setTimeout(() => setStatus(""), 5000);
+
+    if (!res.ok || data.error) {
+      // Echter Fehler — zeige ihn an, damit er debuggt werden kann
+      setError(`Fehler beim Neu-Zuordnen: ${data.error ?? res.statusText}`);
+      if (typeof data.updated === "number" && data.updated > 0) {
+        setStatus(`⚠️ ${data.updated} Zeilen wurden gespeichert, bevor der Fehler auftrat.`);
+        setTimeout(() => setStatus(""), 8000);
+      }
+      return;
+    }
+
+    setStatus(`✓ ${data.updated} Zeilen wurden erfolgreich neu zugeordnet.`);
+    setTimeout(() => setStatus(""), 6000);
   }
 
   return (

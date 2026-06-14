@@ -13,9 +13,11 @@ import {
  *
  * Aktualisiert: home_base, away_base, home_team_nr, away_team_nr,
  *               division_neu, belag
+ *
+ * Verwendet den Service-Role-Client (serverseitig, umgeht RLS),
+ * und UPDATE statt UPSERT (kein INSERT-Recht nötig).
  */
 
-// Alle Felder, die wir aus der DB lesen und neu berechnen.
 interface GameRow {
   id: string;
   home: string;
@@ -40,11 +42,14 @@ type GameUpdate = {
   belag: string;
 };
 
+const SELECT_COLS =
+  "id, home, away, home_base, away_base, home_team_nr, away_team_nr, division, saison, division_neu, belag";
+
 async function buildAliasMap(supabase: ReturnType<typeof createServiceClient>) {
   const { data, error } = await supabase
     .from("team_aliases")
     .select("original, basisname");
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(`Alias-Tabelle konnte nicht geladen werden: ${error.message}`);
   return new Map<string, string>(
     (data ?? []).map((a: { original: string; basisname: string }) => [
       a.original,
@@ -68,11 +73,11 @@ function computeUpdates(
     const newBelag       = deriveBelag(g.division ?? "", g.saison);
 
     const changed =
-      newHomeBase    !== (g.home_base    ?? "") ||
-      newAwayBase    !== (g.away_base    ?? "") ||
-      newHomeTeamNr  !== (g.home_team_nr ?? 1)  ||
-      newAwayTeamNr  !== (g.away_team_nr ?? 1)  ||
-      newDivisionNeu !== g.division_neu           ||
+      newHomeBase    !== (g.home_base    ?? "")  ||
+      newAwayBase    !== (g.away_base    ?? "")  ||
+      newHomeTeamNr  !== (g.home_team_nr ?? 1)   ||
+      newAwayTeamNr  !== (g.away_team_nr ?? 1)   ||
+      newDivisionNeu !== g.division_neu            ||
       newBelag       !== (g.belag        ?? "");
 
     if (changed) {
@@ -91,58 +96,112 @@ function computeUpdates(
   return updates;
 }
 
-const SELECT_COLS =
-  "id, home, away, home_base, away_base, home_team_nr, away_team_nr, division, saison, division_neu, belag";
-
 export async function GET() {
-  const supabase = createServiceClient();
+  try {
+    const supabase = createServiceClient();
 
-  const [aliasMap, gamesResult] = await Promise.all([
-    buildAliasMap(supabase).catch(() => new Map<string, string>()),
-    supabase.from("games").select(SELECT_COLS),
-  ]);
+    const [aliasMap, gamesResult] = await Promise.all([
+      buildAliasMap(supabase),
+      supabase.from("games").select(SELECT_COLS),
+    ]);
 
-  if (gamesResult.error) {
-    return NextResponse.json({ error: gamesResult.error.message }, { status: 500 });
+    if (gamesResult.error) {
+      return NextResponse.json(
+        { error: `Spiele konnten nicht geladen werden: ${gamesResult.error.message}` },
+        { status: 500 }
+      );
+    }
+
+    const updates = computeUpdates(
+      (gamesResult.data ?? []) as GameRow[],
+      aliasMap
+    );
+
+    return NextResponse.json({
+      total:   gamesResult.data?.length ?? 0,
+      changes: updates.length,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  const updates = computeUpdates(
-    (gamesResult.data ?? []) as GameRow[],
-    aliasMap
-  );
-
-  return NextResponse.json({
-    total: gamesResult.data?.length ?? 0,
-    changes: updates.length,
-  });
 }
 
 export async function POST() {
-  const supabase = createServiceClient();
+  try {
+    const supabase = createServiceClient();
 
-  const [aliasMap, gamesResult] = await Promise.all([
-    buildAliasMap(supabase).catch(() => new Map<string, string>()),
-    supabase.from("games").select(SELECT_COLS),
-  ]);
+    // Alias-Map und Spiele parallel laden
+    const [aliasMap, gamesResult] = await Promise.all([
+      buildAliasMap(supabase),
+      supabase.from("games").select(SELECT_COLS),
+    ]);
 
-  if (gamesResult.error) {
-    return NextResponse.json({ error: gamesResult.error.message }, { status: 500 });
-  }
-
-  const updates = computeUpdates(
-    (gamesResult.data ?? []) as GameRow[],
-    aliasMap
-  );
-
-  // Batched upsert – Supabase upsert by id
-  const BATCH = 200;
-  for (let i = 0; i < updates.length; i += BATCH) {
-    const batch = updates.slice(i, i + BATCH);
-    const { error } = await supabase.from("games").upsert(batch, { onConflict: "id" });
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (gamesResult.error) {
+      return NextResponse.json(
+        { error: `Spiele konnten nicht geladen werden: ${gamesResult.error.message}` },
+        { status: 500 }
+      );
     }
-  }
 
-  return NextResponse.json({ updated: updates.length });
+    const updates = computeUpdates(
+      (gamesResult.data ?? []) as GameRow[],
+      aliasMap
+    );
+
+    if (updates.length === 0) {
+      return NextResponse.json({ updated: 0 });
+    }
+
+    // Explizite UPDATE-Aufrufe (kein upsert – erfordert kein INSERT-Recht).
+    // Parallelisiert in Chunks von 50 für gute Performance.
+    const CHUNK = 50;
+    let updated = 0;
+    const firstError: string[] = [];
+
+    for (let i = 0; i < updates.length; i += CHUNK) {
+      const chunk = updates.slice(i, i + CHUNK);
+
+      const results = await Promise.all(
+        chunk.map((u) =>
+          supabase
+            .from("games")
+            .update({
+              home_base:    u.home_base,
+              away_base:    u.away_base,
+              home_team_nr: u.home_team_nr,
+              away_team_nr: u.away_team_nr,
+              division_neu: u.division_neu,
+              belag:        u.belag,
+            })
+            .eq("id", u.id)
+        )
+      );
+
+      for (const { error } of results) {
+        if (error) {
+          // Ersten Fehler merken, Rest trotzdem zählen
+          if (firstError.length === 0) firstError.push(error.message);
+        } else {
+          updated++;
+        }
+      }
+
+      // Bei einem DB-Fehler sofort abbrechen und melden
+      if (firstError.length > 0) {
+        return NextResponse.json(
+          {
+            error:   `Datenbankfehler beim Schreiben: ${firstError[0]}`,
+            updated, // wie viele vor dem Fehler schon gespeichert wurden
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json({ updated });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

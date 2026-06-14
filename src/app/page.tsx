@@ -102,7 +102,7 @@ export default function HomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Übersicht</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Übersicht Verein</h1>
         <p className="text-gray-500 mt-1">Alle Spiele eines Vereins</p>
       </div>
 
@@ -183,10 +183,15 @@ export default function HomePage() {
                     <div className="text-xs text-gray-400 truncate mt-0.5">{oppDetail}</div>
                   )}
                   <div className="flex flex-wrap gap-1 mt-1">
+                    {g.division && (
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                        {g.division}
+                      </span>
+                    )}
                     <DivBadge div={g.division_neu} />
                     <BelagBadge belag={g.belag} />
                     {g.pool && (
-                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500">
                         Pool {g.pool}
                       </span>
                     )}

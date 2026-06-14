@@ -6,9 +6,10 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const publicLinks = [
-  { href: "/",      label: "Übersicht" },
-  { href: "/h2h",   label: "H2H" },
-  { href: "/stats", label: "Statistiken" },
+  { href: "/",           label: "Übersicht Verein"   },
+  { href: "/h2h",        label: "H2H"                },
+  { href: "/stats",      label: "Statistiken Verein" },
+  { href: "/dfv-stats",  label: "Statistiken DFV"    },
 ];
 
 const adminLinks = [

@@ -151,11 +151,20 @@ export default function H2HPage() {
                 return (
                   <div key={g.id} className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-500 truncate">{g.division}</div>
-                      <div className="flex flex-wrap gap-1 mt-1">
+                      <div className="flex flex-wrap gap-1">
+                        {g.division && (
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                            {g.division}
+                          </span>
+                        )}
+                        {g.division_neu && (
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                            {g.division_neu}
+                          </span>
+                        )}
                         <BelagBadge belag={g.belag} />
                         {g.pool && (
-                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500">
                             Pool {g.pool}
                           </span>
                         )}

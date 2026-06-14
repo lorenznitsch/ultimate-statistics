@@ -112,10 +112,17 @@ function GameList({ games, team, emptyText }: { games: Game[]; team: string; emp
           >
             <div className="flex-1 min-w-0">
               <span className="font-medium text-gray-800 truncate block">{opponent}</span>
-              <div className="flex gap-1 mt-0.5">
-                <span className="text-xs text-gray-400">{g.jahr}</span>
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                <span className="text-xs text-gray-400 self-center">{g.jahr}</span>
+                {g.division && (
+                  <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                    {g.division}
+                  </span>
+                )}
                 {g.division_neu && (
-                  <span className="text-xs text-purple-500">· {g.division_neu}</span>
+                  <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                    {g.division_neu}
+                  </span>
                 )}
                 <BelagBadge belag={g.belag} />
               </div>
@@ -225,7 +232,7 @@ export default function StatsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Team-Statistiken</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Statistiken Verein</h1>
         <p className="text-gray-500 mt-1">Detaillierte Auswertung für einen Verein</p>
       </div>
 

@@ -42,6 +42,55 @@ export async function PUT(req: NextRequest) {
   return NextResponse.json(data);
 }
 
+/**
+ * PATCH /api/aliases  – Bulk-Upsert per CSV-Daten.
+ * Body: { rows: Array<{ original: string; basisname: string }> }
+ * Bestehende Einträge (gleicher `original`-Wert) werden aktualisiert.
+ */
+export async function PATCH(req: NextRequest) {
+  const supabase = createServiceClient();
+  const body = await req.json().catch(() => null);
+  const rows = body?.rows;
+
+  if (!Array.isArray(rows)) {
+    return NextResponse.json({ error: "rows (Array) erforderlich" }, { status: 400 });
+  }
+
+  // Valide Zeilen: beide Felder müssen nicht-leer sein
+  const valid: { original: string; basisname: string }[] = [];
+  let skipped = 0;
+  for (const r of rows) {
+    const o = (r?.original ?? "").trim();
+    const b = (r?.basisname ?? "").trim();
+    if (o && b) valid.push({ original: o, basisname: b });
+    else skipped++;
+  }
+
+  if (valid.length === 0) {
+    return NextResponse.json({ imported: 0, updated: 0, skipped });
+  }
+
+  // Herausfinden, welche bereits existieren → um imported/updated zu unterscheiden
+  const originals = valid.map((r) => r.original);
+  const { data: existing } = await supabase
+    .from("team_aliases")
+    .select("original")
+    .in("original", originals);
+  const existingSet = new Set<string>(
+    (existing ?? []).map((e: { original: string }) => e.original)
+  );
+
+  const imported = valid.filter((r) => !existingSet.has(r.original)).length;
+  const updated  = valid.filter((r) =>  existingSet.has(r.original)).length;
+
+  const { error } = await supabase
+    .from("team_aliases")
+    .upsert(valid, { onConflict: "original" });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ imported, updated, skipped });
+}
+
 export async function DELETE(req: NextRequest) {
   const supabase = createServiceClient();
   const { searchParams } = new URL(req.url);

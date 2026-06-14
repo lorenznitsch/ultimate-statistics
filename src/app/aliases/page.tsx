@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import Papa from "papaparse";
 import type { TeamAlias } from "@/lib/types";
 
 export default function AliasesPage() {
@@ -16,6 +17,12 @@ export default function AliasesPage() {
   // Reassign-Preview
   const [preview, setPreview] = useState<{ total: number; changes: number } | null>(null);
   const [reassigning, setReassigning] = useState(false);
+  // CSV-Import
+  const [csvPreview,   setCsvPreview]   = useState<{ original: string; basisname: string }[] | null>(null);
+  const [csvError,     setCsvError]     = useState("");
+  const [csvStatus,    setCsvStatus]    = useState("");
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   async function loadAliases() {
     const res  = await fetch("/api/aliases");
@@ -24,7 +31,6 @@ export default function AliasesPage() {
   }
 
   async function loadUnused() {
-    // Alle home+away-Originalnamen aus games, die noch keinen Alias haben
     const [gamesRes, aliasRes] = await Promise.all([
       fetch("/api/games"),
       fetch("/api/aliases"),
@@ -116,7 +122,6 @@ export default function AliasesPage() {
     setPreview(null);
 
     if (!res.ok || data.error) {
-      // Echter Fehler — zeige ihn an, damit er debuggt werden kann
       setError(`Fehler beim Neu-Zuordnen: ${data.error ?? res.statusText}`);
       if (typeof data.updated === "number" && data.updated > 0) {
         setStatus(`⚠️ ${data.updated} Zeilen wurden gespeichert, bevor der Fehler auftrat.`);
@@ -127,6 +132,74 @@ export default function AliasesPage() {
 
     setStatus(`✓ ${data.updated} Zeilen wurden erfolgreich neu zugeordnet.`);
     setTimeout(() => setStatus(""), 6000);
+  }
+
+  // ---- CSV-Import ----
+
+  function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setCsvPreview(null);
+    setCsvError("");
+    if (!file) return;
+
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim().toLowerCase(),
+      complete: (result) => {
+        const rows = result.data
+          .map((r) => ({
+            original:  (r["original"]  ?? "").trim(),
+            basisname: (r["basisname"] ?? "").trim(),
+          }))
+          .filter((r) => r.original && r.basisname);
+
+        if (rows.length === 0) {
+          setCsvError(
+            'Keine gültigen Zeilen gefunden. CSV braucht Header "original,basisname".'
+          );
+          return;
+        }
+        setCsvPreview(rows);
+      },
+      error: (err) => setCsvError(`CSV-Fehler: ${err.message}`),
+    });
+  }
+
+  async function importCsv() {
+    if (!csvPreview || csvPreview.length === 0) return;
+    setCsvImporting(true);
+    setCsvError("");
+
+    const res = await fetch("/api/aliases", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: csvPreview }),
+    });
+    const data = await res.json();
+    setCsvImporting(false);
+
+    if (!res.ok) {
+      setCsvError(data.error ?? "Fehler beim Importieren.");
+      return;
+    }
+
+    setCsvPreview(null);
+    if (csvInputRef.current) csvInputRef.current.value = "";
+    setCsvStatus(
+      `✓ ${data.imported} neu angelegt, ${data.updated} aktualisiert` +
+      (data.skipped > 0 ? `, ${data.skipped} Zeilen übersprungen (unvollständig)` : "") +
+      "."
+    );
+    setTimeout(() => setCsvStatus(""), 8000);
+    loadAliases();
+    loadUnused();
+  }
+
+  function cancelCsv() {
+    setCsvPreview(null);
+    setCsvError("");
+    if (csvInputRef.current) csvInputRef.current.value = "";
   }
 
   return (
@@ -185,6 +258,82 @@ export default function AliasesPage() {
         >
           + Hinzufügen
         </button>
+      </div>
+
+      {/* CSV-Massenimport */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <h2 className="font-semibold text-gray-800 mb-1">Aliase per CSV importieren</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          CSV mit Header{" "}
+          <code className="bg-gray-100 px-1 rounded text-xs font-mono">original,basisname</code>.
+          Existierende Einträge (gleicher <code className="bg-gray-100 px-1 rounded text-xs font-mono">original</code>-Wert)
+          werden aktualisiert.
+        </p>
+
+        {csvStatus && (
+          <div className="mb-3 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+            {csvStatus}
+          </div>
+        )}
+        {csvError && (
+          <div className="mb-3 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+            {csvError}
+          </div>
+        )}
+
+        {!csvPreview ? (
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={handleCsvFile}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#006B5E] file:text-white hover:file:bg-[#005A4F] file:cursor-pointer"
+          />
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-gray-700">
+              Vorschau:{" "}
+              <span className="text-[#006B5E] font-semibold">{csvPreview.length} Zeilen</span> werden importiert
+            </p>
+            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Original
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Basisname
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {csvPreview.map((row, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 font-mono text-gray-700">{row.original}</td>
+                      <td className="px-4 py-2 font-semibold text-[#006B5E]">{row.basisname}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={importCsv}
+                disabled={csvImporting}
+                className="px-4 py-2 bg-[#006B5E] text-white rounded-lg text-sm font-medium hover:bg-[#005A4F] transition-colors disabled:opacity-50"
+              >
+                {csvImporting ? "Importiere…" : `${csvPreview.length} Aliase importieren`}
+              </button>
+              <button
+                onClick={cancelCsv}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bestehende Spiele neu zuordnen */}

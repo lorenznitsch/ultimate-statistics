@@ -5,9 +5,9 @@ import type { Game } from "@/lib/types";
 // -------------------------------------------------------
 // Schwellenwerte – hier zentral anpassen
 // -------------------------------------------------------
-export const MIN_GAMES_ANGST  = 3;   // Mindest-Duelle für Angstgegner-Wertung
-export const MIN_UP_GAMES     = 5;   // Mindest-UP-Spiele für UP-Quote-Wertung
-export const MIN_TOTAL_GAMES  = 10;  // Mindest-Spiele für Gesamt-Wertungen
+const MIN_GAMES_ANGST  = 3;   // Mindest-Duelle für Angstgegner-Wertung
+const MIN_UP_GAMES     = 5;   // Mindest-UP-Spiele für UP-Quote-Wertung
+const MIN_TOTAL_GAMES  = 10;  // Mindest-Spiele für Gesamt-Wertungen
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();

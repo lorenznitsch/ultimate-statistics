@@ -22,7 +22,7 @@ export default function NavBar() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
           <span className="text-2xl">🥏</span>
-          <span>Hucks H2H</span>
+          <span>DFV Statistiken</span>
         </Link>
 
         {/* Desktop Nav */}

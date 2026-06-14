@@ -100,6 +100,32 @@ describe("normalizeTeam", () => {
 // deriveDivisionNeu
 // -------------------------------------------------------
 describe("deriveDivisionNeu", () => {
+  describe("Masters-Kategorien (müssen VOR einfachen Kategorien geprüft werden)", () => {
+    test("Masters Mixed", () => {
+      expect(deriveDivisionNeu("Masters Mixed 1. Liga")).toBe("Masters Mixed");
+      expect(deriveDivisionNeu("MASTERS MIXED")).toBe("Masters Mixed");
+    });
+
+    test("Masters Open", () => {
+      expect(deriveDivisionNeu("Masters Open Liga")).toBe("Masters Open");
+      expect(deriveDivisionNeu("masters open")).toBe("Masters Open");
+    });
+
+    test("Masters Frauen", () => {
+      expect(deriveDivisionNeu("Masters Frauen Liga")).toBe("Masters Frauen");
+    });
+
+    test("'Masters Mixed' wird NICHT als einfaches 'Mixed' erkannt", () => {
+      expect(deriveDivisionNeu("Masters Mixed")).toBe("Masters Mixed");
+      expect(deriveDivisionNeu("Masters Mixed")).not.toBe("Mixed");
+    });
+
+    test("'Masters Open' wird NICHT als einfaches 'Open' erkannt", () => {
+      expect(deriveDivisionNeu("Masters Open")).toBe("Masters Open");
+      expect(deriveDivisionNeu("Masters Open")).not.toBe("Open");
+    });
+  });
+
   test("Frauen", () => {
     expect(deriveDivisionNeu("Frauen 1. Liga")).toBe("Frauen");
     expect(deriveDivisionNeu("FRAUEN 2. Liga")).toBe("Frauen");
@@ -122,7 +148,7 @@ describe("deriveDivisionNeu", () => {
     expect(deriveDivisionNeu("U20 Liga")).toBe("Jugend");
   });
 
-  test("Frauen hat Priorität vor Mixed", () => {
+  test("Frauen hat Priorität vor Mixed (ohne Masters)", () => {
     expect(deriveDivisionNeu("Frauen Mixed Friendly")).toBe("Frauen");
   });
 

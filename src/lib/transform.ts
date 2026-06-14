@@ -18,6 +18,11 @@ export const NEVER_STRIP: ReadonlyArray<string> = [
 // -------------------------------------------------------
 export function deriveDivisionNeu(division: string): string | null {
   const d = division.toLowerCase();
+  // Masters-Prüfungen VOR den einfachen Kategorien, damit "Masters Mixed"
+  // nicht fälschlich als "Mixed" erkannt wird.
+  if (d.includes("masters") && d.includes("mixed"))  return "Masters Mixed";
+  if (d.includes("masters") && d.includes("open"))   return "Masters Open";
+  if (d.includes("masters") && d.includes("frauen")) return "Masters Frauen";
   if (d.includes("frauen")) return "Frauen";
   if (d.includes("mixed"))  return "Mixed";
   if (d.includes("open"))   return "Open";

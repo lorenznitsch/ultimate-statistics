@@ -3,7 +3,7 @@ import "./globals.css";
 import NavBar from "@/components/NavBar";
 
 export const metadata: Metadata = {
-  title: "Hucks H2H",
+  title: "DFV Statistiken",
   description: "Head-to-Head-Vergleiche deutscher Ultimate-Frisbee-Vereine",
 };
 
@@ -20,7 +20,7 @@ export default function RootLayout({
           {children}
         </main>
         <footer className="border-t border-gray-100 py-6 text-center text-sm text-gray-400">
-          Hucks H2H · Daten von der DFBD · Kein offizielles Angebot
+          DFV Statistiken · DFV-Daten
         </footer>
       </body>
     </html>

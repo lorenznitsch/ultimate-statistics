@@ -1,5 +1,5 @@
 /**
- * transform.ts
+ * transform.ts – v2 (2026-06-14)
  * Alle Daten-Transformations-Funktionen für den CSV-Import.
  * Die alias-Map wird als Parameter übergeben, damit die Funktionen
  * isoliert testbar sind (kein DB-Aufruf nötig).

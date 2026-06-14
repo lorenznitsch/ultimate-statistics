@@ -112,13 +112,30 @@ export async function GET() {
       );
     }
 
-    const updates = computeUpdates(
-      (gamesResult.data ?? []) as GameRow[],
-      aliasMap
-    );
+    const games = (gamesResult.data ?? []) as GameRow[];
+    const updates = computeUpdates(games, aliasMap);
+
+    // Diagnose-Logging – erscheint in Vercel Function Logs
+    const mastersSample = games
+      .filter((g) => (g.division ?? "").toLowerCase().includes("masters"))
+      .slice(0, 3);
+    if (mastersSample.length > 0) {
+      console.error(
+        "[reassign/GET] Masters-Sample:",
+        mastersSample.map((g) => ({
+          division:     g.division,
+          stored:       g.division_neu,
+          computed:     deriveDivisionNeu(g.division ?? ""),
+          wouldChange:  deriveDivisionNeu(g.division ?? "") !== g.division_neu,
+        }))
+      );
+    } else {
+      console.error("[reassign/GET] Keine Masters-Spiele in DB gefunden.");
+    }
+    console.error(`[reassign/GET] total=${games.length} changes=${updates.length}`);
 
     return NextResponse.json({
-      total:   gamesResult.data?.length ?? 0,
+      total:   games.length,
       changes: updates.length,
     });
   } catch (e) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -18,7 +19,6 @@ export async function GET(req: NextRequest) {
 
   let orClause: string;
   if (teamNr !== null) {
-    // Beide Vereine müssen die gewählte Teamnummer haben
     orClause = [
       `and(home_base.eq.${teamA},away_base.eq.${teamB},home_team_nr.eq.${teamNr},away_team_nr.eq.${teamNr})`,
       `and(home_base.eq.${teamB},away_base.eq.${teamA},home_team_nr.eq.${teamNr},away_team_nr.eq.${teamNr})`,
@@ -30,17 +30,21 @@ export async function GET(req: NextRequest) {
     ].join(",");
   }
 
-  let query = supabase
-    .from("games")
-    .select("*")
-    .or(orClause)
-    .order("jahr", { ascending: false });
+  const { data, error } = await fetchAllRows((from, to) => {
+    let q = supabase
+      .from("games")
+      .select("*")
+      .or(orClause)
+      .order("jahr", { ascending: false })
+      .range(from, to);
 
-  if (jahre.length) query = query.in("jahr", jahre);
-  if (div)          query = query.eq("division_neu", div);
-  if (belag)        query = query.eq("belag", belag);
+    if (jahre.length) q = q.in("jahr", jahre);
+    if (div)          q = q.eq("division_neu", div);
+    if (belag)        q = q.eq("belag", belag);
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return q;
+  });
+
+  if (error) return NextResponse.json({ error }, { status: 500 });
   return NextResponse.json(data);
 }

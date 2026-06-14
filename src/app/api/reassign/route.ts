@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import {
   normalizeTeam,
   deriveDivisionNeu,
@@ -102,17 +103,19 @@ export async function GET() {
 
     const [aliasMap, gamesResult] = await Promise.all([
       buildAliasMap(supabase),
-      supabase.from("games").select(SELECT_COLS),
+      fetchAllRows<GameRow>((from, to) =>
+        supabase.from("games").select(SELECT_COLS).range(from, to)
+      ),
     ]);
 
     if (gamesResult.error) {
       return NextResponse.json(
-        { error: `Spiele konnten nicht geladen werden: ${gamesResult.error.message}` },
+        { error: `Spiele konnten nicht geladen werden: ${gamesResult.error}` },
         { status: 500 }
       );
     }
 
-    const games = (gamesResult.data ?? []) as GameRow[];
+    const games   = gamesResult.data;
     const updates = computeUpdates(games, aliasMap);
 
     // Diagnose-Logging – erscheint in Vercel Function Logs
@@ -123,10 +126,10 @@ export async function GET() {
       console.error(
         "[reassign/GET] Masters-Sample:",
         mastersSample.map((g) => ({
-          division:     g.division,
-          stored:       g.division_neu,
-          computed:     deriveDivisionNeu(g.division ?? ""),
-          wouldChange:  deriveDivisionNeu(g.division ?? "") !== g.division_neu,
+          division:    g.division,
+          stored:      g.division_neu,
+          computed:    deriveDivisionNeu(g.division ?? ""),
+          wouldChange: deriveDivisionNeu(g.division ?? "") !== g.division_neu,
         }))
       );
     } else {
@@ -148,23 +151,22 @@ export async function POST() {
   try {
     const supabase = createServiceClient();
 
-    // Alias-Map und Spiele parallel laden
+    // Alias-Map und Spiele parallel laden (paginiert, kein 1000-Limit)
     const [aliasMap, gamesResult] = await Promise.all([
       buildAliasMap(supabase),
-      supabase.from("games").select(SELECT_COLS),
+      fetchAllRows<GameRow>((from, to) =>
+        supabase.from("games").select(SELECT_COLS).range(from, to)
+      ),
     ]);
 
     if (gamesResult.error) {
       return NextResponse.json(
-        { error: `Spiele konnten nicht geladen werden: ${gamesResult.error.message}` },
+        { error: `Spiele konnten nicht geladen werden: ${gamesResult.error}` },
         { status: 500 }
       );
     }
 
-    const updates = computeUpdates(
-      (gamesResult.data ?? []) as GameRow[],
-      aliasMap
-    );
+    const updates = computeUpdates(gamesResult.data, aliasMap);
 
     if (updates.length === 0) {
       return NextResponse.json({ updated: 0 });

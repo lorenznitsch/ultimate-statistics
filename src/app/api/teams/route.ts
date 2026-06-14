@@ -1,23 +1,28 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-/** Gibt alle distinct Basisnamen (home_base ∪ away_base) zurück */
+/**
+ * Gibt alle distinct Vereins-Basisnamen zurück (home_base ∪ away_base), sortiert.
+ * Verwendet die SQL-Funktion get_team_names() (Migration 004), die die UNION DISTINCT
+ * serverseitig ausführt – kein PostgREST-Zeilenlimit, ein einziger DB-Aufruf.
+ */
 export async function GET() {
   const supabase = await createClient();
 
-  const [home, away] = await Promise.all([
-    supabase.from("games").select("home_base").order("home_base"),
-    supabase.from("games").select("away_base").order("away_base"),
-  ]);
+  const { data, error } = await supabase.rpc("get_team_names");
 
-  if (home.error || away.error) {
-    return NextResponse.json({ error: "DB-Fehler" }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: `Vereinsliste konnte nicht geladen werden: ${error.message}` },
+      { status: 500 }
+    );
   }
 
-  const all = new Set<string>([
-    ...(home.data ?? []).map((r) => r.home_base),
-    ...(away.data ?? []).map((r) => r.away_base),
-  ]);
+  // data ist Array<{ name: string }>
+  const names = (data as Array<{ name: string }>)
+    .map((r) => r.name)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "de"));
 
-  return NextResponse.json([...all].sort());
+  return NextResponse.json(names);
 }

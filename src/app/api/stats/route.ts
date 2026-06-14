@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import type { Game } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -14,25 +15,27 @@ export async function GET(req: NextRequest) {
 
   if (!team) return NextResponse.json({ error: "team erforderlich" }, { status: 400 });
 
-  let query = supabase.from("games").select("*");
+  const { data, error } = await fetchAllRows<Game>((from, to) => {
+    let q = supabase.from("games").select("*").range(from, to);
 
-  if (teamNr !== null) {
-    query = query.or(
-      `and(home_base.eq.${team},home_team_nr.eq.${teamNr}),and(away_base.eq.${team},away_team_nr.eq.${teamNr})`
-    );
-  } else {
-    query = query.or(`home_base.eq.${team},away_base.eq.${team}`);
-  }
+    if (teamNr !== null) {
+      q = q.or(
+        `and(home_base.eq.${team},home_team_nr.eq.${teamNr}),and(away_base.eq.${team},away_team_nr.eq.${teamNr})`
+      );
+    } else {
+      q = q.or(`home_base.eq.${team},away_base.eq.${team}`);
+    }
 
-  if (jahre.length) query = query.in("jahr", jahre);
-  if (div)          query = query.eq("division_neu", div);
-  if (belag)        query = query.eq("belag", belag);
+    if (jahre.length) q = q.in("jahr", jahre);
+    if (div)          q = q.eq("division_neu", div);
+    if (belag)        q = q.eq("belag", belag);
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return q;
+  });
 
-  const games = (data ?? []) as Game[];
-  return NextResponse.json(computeStats(team, games));
+  if (error) return NextResponse.json({ error }, { status: 500 });
+
+  return NextResponse.json(computeStats(team, data));
 }
 
 function computeStats(team: string, games: Game[]) {

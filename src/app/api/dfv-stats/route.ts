@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import type { Game } from "@/lib/types";
 
 // -------------------------------------------------------
@@ -18,16 +19,18 @@ export async function GET(req: NextRequest) {
   const belag  = searchParams.get("belag");
   const teamNr = searchParams.get("teamNr") ? Number(searchParams.get("teamNr")) : null;
 
-  let query = supabase.from("games").select("*");
-  if (jahre.length)    query = query.in("jahr", jahre);
-  if (div)             query = query.eq("division_neu", div);
-  if (belag)           query = query.eq("belag", belag);
-  if (teamNr !== null) query = query.or(`home_team_nr.eq.${teamNr},away_team_nr.eq.${teamNr}`);
+  const { data, error } = await fetchAllRows<Game>((from, to) => {
+    let q = supabase.from("games").select("*").range(from, to);
+    if (jahre.length)    q = q.in("jahr", jahre);
+    if (div)             q = q.eq("division_neu", div);
+    if (belag)           q = q.eq("belag", belag);
+    if (teamNr !== null) q = q.or(`home_team_nr.eq.${teamNr},away_team_nr.eq.${teamNr}`);
+    return q;
+  });
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error }, { status: 500 });
 
-  return NextResponse.json(computeDfvStats((data ?? []) as Game[]));
+  return NextResponse.json(computeDfvStats(data));
 }
 
 // -------------------------------------------------------

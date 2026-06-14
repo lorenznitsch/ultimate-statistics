@@ -6,6 +6,8 @@ export interface Game {
   away_base: string;
   home_score: number;
   away_score: number;
+  home_team_nr: number;
+  away_team_nr: number;
   division: string | null;
   pool: string | null;
   jahr: number;
@@ -23,13 +25,13 @@ export interface TeamAlias {
 }
 
 export type Saison = "Outdoor" | "Indoor";
-export type DivisionNeu = "Frauen" | "Open" | "Mixed" | "Jugend";
 export type Belag = "Outdoor" | "Indoor" | "Beach";
 
 export interface FilterState {
   jahre: number[];
-  divisionen: DivisionNeu[];
-  belaege: Belag[];
+  division: string;
+  belag: string;
+  teamNr: number | null;
 }
 
 /** Zeile nach CSV-Parse (rohe Felder) */
@@ -50,6 +52,8 @@ export interface TransformedRow {
   away_base: string;
   home_score: number;
   away_score: number;
+  home_team_nr: number;
+  away_team_nr: number;
   division: string;
   pool: string;
   jahr: number;

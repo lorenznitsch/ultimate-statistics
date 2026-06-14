@@ -1,21 +1,10 @@
 "use client";
 
-/**
- * FilterBar – Wiederverwendbare Filterleiste.
- * Props:
- *   jahre          – alle verfügbaren Jahre aus der DB
- *   selectedJahre  – aktuell ausgewählte Jahre (Mehrfachauswahl)
- *   divisionen     – verfügbare division_neu-Werte
- *   selectedDiv    – ausgewählte Division (leer = alle)
- *   belaege        – verfügbare Beläge
- *   selectedBelag  – ausgewählter Belag (leer = alle)
- *   onChange       – Callback, wenn sich Filter ändert
- */
-
 export interface FilterValues {
   jahre: number[];
   division: string;
   belag: string;
+  teamNr: number | null; // null = alle
 }
 
 interface FilterBarProps {
@@ -25,6 +14,8 @@ interface FilterBarProps {
   selectedDiv: string;
   belaege: string[];
   selectedBelag: string;
+  teamNrs: number[];         // verfügbare Teamnummern, z.B. [1, 2, 3]
+  selectedTeamNr: number | null;
   onChange: (values: FilterValues) => void;
 }
 
@@ -35,18 +26,31 @@ export default function FilterBar({
   selectedDiv,
   belaege,
   selectedBelag,
+  teamNrs,
+  selectedTeamNr,
   onChange,
 }: FilterBarProps) {
+  function emit(partial: Partial<FilterValues>) {
+    onChange({
+      jahre:    selectedJahre,
+      division: selectedDiv,
+      belag:    selectedBelag,
+      teamNr:   selectedTeamNr,
+      ...partial,
+    });
+  }
+
   function toggleJahr(jahr: number) {
     const next = selectedJahre.includes(jahr)
       ? selectedJahre.filter((j) => j !== jahr)
       : [...selectedJahre, jahr];
-    onChange({ jahre: next, division: selectedDiv, belag: selectedBelag });
+    emit({ jahre: next });
   }
 
   return (
     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-wrap gap-4 items-start">
-      {/* Jahr-Mehrfachauswahl */}
+
+      {/* Jahr */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Jahr</p>
         <div className="flex flex-wrap gap-1">
@@ -65,10 +69,10 @@ export default function FilterBar({
           ))}
           {selectedJahre.length > 0 && (
             <button
-              onClick={() => onChange({ jahre: [], division: selectedDiv, belag: selectedBelag })}
+              onClick={() => emit({ jahre: [] })}
               className="px-3 py-1 rounded-full text-sm text-gray-400 hover:text-red-500 transition-colors"
             >
-              ✕ alle
+              ✕
             </button>
           )}
         </div>
@@ -79,7 +83,7 @@ export default function FilterBar({
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Division</p>
         <select
           value={selectedDiv}
-          onChange={(e) => onChange({ jahre: selectedJahre, division: e.target.value, belag: selectedBelag })}
+          onChange={(e) => emit({ division: e.target.value })}
           className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#006B5E]/40 focus:border-[#006B5E]"
         >
           <option value="">Alle</option>
@@ -92,11 +96,11 @@ export default function FilterBar({
       {/* Belag */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Belag</p>
-        <div className="flex gap-1">
-          {["", ...belaege].map((b) => (
+        <div className="flex gap-1 flex-wrap">
+          {(["", ...belaege] as string[]).map((b) => (
             <button
-              key={b || "alle"}
-              onClick={() => onChange({ jahre: selectedJahre, division: selectedDiv, belag: b })}
+              key={b || "alle-belag"}
+              onClick={() => emit({ belag: b })}
               className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
                 selectedBelag === b
                   ? "bg-[#006B5E] text-white border-[#006B5E]"
@@ -108,6 +112,38 @@ export default function FilterBar({
           ))}
         </div>
       </div>
+
+      {/* Team-Nummer */}
+      {teamNrs.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Team</p>
+          <div className="flex gap-1 flex-wrap">
+            <button
+              onClick={() => emit({ teamNr: null })}
+              className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+                selectedTeamNr === null
+                  ? "bg-[#006B5E] text-white border-[#006B5E]"
+                  : "bg-white text-gray-600 border-gray-300 hover:border-[#006B5E] hover:text-[#006B5E]"
+              }`}
+            >
+              Alle
+            </button>
+            {teamNrs.map((nr) => (
+              <button
+                key={nr}
+                onClick={() => emit({ teamNr: nr })}
+                className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+                  selectedTeamNr === nr
+                    ? "bg-[#006B5E] text-white border-[#006B5E]"
+                    : "bg-white text-gray-600 border-gray-300 hover:border-[#006B5E] hover:text-[#006B5E]"
+                }`}
+              >
+                Team {nr}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

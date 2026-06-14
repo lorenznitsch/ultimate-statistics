@@ -141,7 +141,8 @@ export default function StatsPage() {
   const [stats,       setStats]       = useState<StatsData | null>(null);
   const [allGames,    setAllGames]    = useState<Game[]>([]);
   const [jahre,       setJahre]       = useState<number[]>([]);
-  const [filter,      setFilter]      = useState<FilterValues>({ jahre: [], division: "", belag: "" });
+  const [teamNrs,     setTeamNrs]     = useState<number[]>([]);
+  const [filter,      setFilter]      = useState<FilterValues>({ jahre: [], division: "", belag: "", teamNr: null });
   const [loading,     setLoading]     = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
 
@@ -151,8 +152,7 @@ export default function StatsPage() {
     });
     fetch("/api/games").then((r) => r.json()).then((d: Game[]) => {
       if (Array.isArray(d)) {
-        const js = [...new Set(d.map((g) => g.jahr))].sort((a, b) => b - a);
-        setJahre(js);
+        setJahre([...new Set(d.map((g) => g.jahr))].sort((a, b) => b - a));
       }
     });
   }, []);
@@ -163,8 +163,9 @@ export default function StatsPage() {
     setActivePanel(null);
     const params = new URLSearchParams({ team: t });
     f.jahre.forEach((j) => params.append("jahr", String(j)));
-    if (f.division) params.set("division", f.division);
-    if (f.belag)    params.set("belag",    f.belag);
+    if (f.division)      params.set("division", f.division);
+    if (f.belag)         params.set("belag",    f.belag);
+    if (f.teamNr !== null) params.set("teamNr", String(f.teamNr));
 
     const [statsRes, gamesRes] = await Promise.all([
       fetch(`/api/stats?${params}`),
@@ -173,11 +174,24 @@ export default function StatsPage() {
     const statsData = await statsRes.json();
     const gamesData = await gamesRes.json();
     setStats(statsData);
-    setAllGames(Array.isArray(gamesData) ? gamesData : []);
+    const gs = Array.isArray(gamesData) ? (gamesData as Game[]) : [];
+    setAllGames(gs);
+
+    // Teamnummern aus den Spielen des gewählten Vereins ableiten
+    if (!f.jahre.length && !f.division && !f.belag && f.teamNr === null) {
+      const nrs = new Set<number>();
+      gs.forEach((g) => {
+        if (g.home_base === t) nrs.add(g.home_team_nr ?? 1);
+        else nrs.add(g.away_team_nr ?? 1);
+      });
+      setTeamNrs([...nrs].sort());
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { if (team) loadStats(team, filter); }, [team]);
+  useEffect(() => {
+    if (team) { setTeamNrs([]); loadStats(team, { jahre: [], division: "", belag: "", teamNr: null }); }
+  }, [team]);
 
   function handleFilter(f: FilterValues) {
     setFilter(f);
@@ -235,6 +249,8 @@ export default function StatsPage() {
           selectedDiv={filter.division}
           belaege={["Outdoor", "Indoor", "Beach"]}
           selectedBelag={filter.belag}
+          teamNrs={teamNrs}
+          selectedTeamNr={filter.teamNr}
           onChange={handleFilter}
         />
       )}

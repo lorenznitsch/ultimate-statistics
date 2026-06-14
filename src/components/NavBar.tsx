@@ -1,20 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-const links = [
-  { href: "/",        label: "Übersicht" },
-  { href: "/h2h",     label: "H2H" },
-  { href: "/stats",   label: "Statistiken" },
+const publicLinks = [
+  { href: "/",      label: "Übersicht" },
+  { href: "/h2h",   label: "H2H" },
+  { href: "/stats", label: "Statistiken" },
+];
+
+const adminLinks = [
   { href: "/aliases", label: "Aliase" },
   { href: "/import",  label: "Import" },
 ];
 
 export default function NavBar() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const router   = useRouter();
+  const [open,    setOpen]    = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAdmin(!!session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAdmin(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/");
+    router.refresh();
+  }
+
+  const links = isAdmin ? [...publicLinks, ...adminLinks] : publicLinks;
 
   return (
     <header className="bg-[#006B5E] text-white shadow-md">
@@ -40,6 +69,21 @@ export default function NavBar() {
               {l.label}
             </Link>
           ))}
+          {isAdmin ? (
+            <button
+              onClick={handleLogout}
+              className="ml-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Logout
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="ml-2 px-3 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Login
+            </Link>
+          )}
         </nav>
 
         {/* Mobile Hamburger */}
@@ -66,14 +110,28 @@ export default function NavBar() {
               href={l.href}
               onClick={() => setOpen(false)}
               className={`block px-3 py-2 mt-1 rounded-lg text-sm font-medium transition-colors ${
-                pathname === l.href
-                  ? "bg-white/20 text-white"
-                  : "text-white/80 hover:bg-white/10"
+                pathname === l.href ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10"
               }`}
             >
               {l.label}
             </Link>
           ))}
+          {isAdmin ? (
+            <button
+              onClick={() => { setOpen(false); handleLogout(); }}
+              className="block w-full text-left px-3 py-2 mt-1 rounded-lg text-sm text-white/60 hover:bg-white/10 transition-colors"
+            >
+              Logout
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2 mt-1 rounded-lg text-sm text-white/60 hover:bg-white/10 transition-colors"
+            >
+              Login
+            </Link>
+          )}
         </nav>
       )}
     </header>

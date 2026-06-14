@@ -6,17 +6,23 @@ export async function GET(req: NextRequest) {
   const supabase = await createClient();
   const { searchParams } = new URL(req.url);
 
-  const team  = searchParams.get("team");
-  const jahre = searchParams.getAll("jahr").map(Number).filter(Boolean);
-  const div   = searchParams.get("division");
-  const belag = searchParams.get("belag");
+  const team   = searchParams.get("team");
+  const jahre  = searchParams.getAll("jahr").map(Number).filter(Boolean);
+  const div    = searchParams.get("division");
+  const belag  = searchParams.get("belag");
+  const teamNr = searchParams.get("teamNr") ? Number(searchParams.get("teamNr")) : null;
 
   if (!team) return NextResponse.json({ error: "team erforderlich" }, { status: 400 });
 
-  let query = supabase
-    .from("games")
-    .select("*")
-    .or(`home_base.eq.${team},away_base.eq.${team}`);
+  let query = supabase.from("games").select("*");
+
+  if (teamNr !== null) {
+    query = query.or(
+      `and(home_base.eq.${team},home_team_nr.eq.${teamNr}),and(away_base.eq.${team},away_team_nr.eq.${teamNr})`
+    );
+  } else {
+    query = query.or(`home_base.eq.${team},away_base.eq.${team}`);
+  }
 
   if (jahre.length) query = query.in("jahr", jahre);
   if (div)          query = query.eq("division_neu", div);
@@ -26,16 +32,15 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const games = (data ?? []) as Game[];
-  const stats = computeStats(team, games);
-  return NextResponse.json(stats);
+  return NextResponse.json(computeStats(team, games));
 }
 
 function computeStats(team: string, games: Game[]) {
-  const total   = games.length;
+  const total = games.length;
   let wins = 0, losses = 0, scored = 0, conceded = 0;
   const opponentMap = new Map<string, { wins: number; losses: number; games: number }>();
-  let biggestWin: Game | null     = null;
-  let biggestLoss: Game | null    = null;
+  let biggestWin: Game | null = null;
+  let biggestLoss: Game | null = null;
   const byDivision = new Map<string, { wins: number; losses: number }>();
   const byBelag    = new Map<string, { wins: number; losses: number }>();
   const byYear     = new Map<number, number>();
@@ -50,39 +55,37 @@ function computeStats(team: string, games: Game[]) {
     const diff     = myScore - opScore;
 
     won ? wins++ : losses++;
-    scored    += myScore;
-    conceded  += opScore;
+    scored   += myScore;
+    conceded += opScore;
 
-    // Gegner-Map
     if (!opponentMap.has(opponent)) opponentMap.set(opponent, { wins: 0, losses: 0, games: 0 });
     const oEntry = opponentMap.get(opponent)!;
     oEntry.games++;
     won ? oEntry.wins++ : oEntry.losses++;
 
-    // Höchster Sieg / höchste Niederlage
-    if (diff > 0 && (!biggestWin || diff > biggestWin.home_score - biggestWin.away_score)) biggestWin = g;
-    if (diff < 0 && (!biggestLoss || diff < biggestLoss.home_score - biggestLoss.away_score)) biggestLoss = g;
+    const absDiff = Math.abs(diff);
+    if (won && (!biggestWin || absDiff > Math.abs(
+      (biggestWin.home_base === team ? biggestWin.home_score : biggestWin.away_score) -
+      (biggestWin.home_base === team ? biggestWin.away_score : biggestWin.home_score)
+    ))) biggestWin = g;
+    if (!won && (!biggestLoss || absDiff > Math.abs(
+      (biggestLoss.home_base === team ? biggestLoss.home_score : biggestLoss.away_score) -
+      (biggestLoss.home_base === team ? biggestLoss.away_score : biggestLoss.home_score)
+    ))) biggestLoss = g;
 
-    // Nach Division
     const divKey = g.division_neu ?? "Sonstige";
     if (!byDivision.has(divKey)) byDivision.set(divKey, { wins: 0, losses: 0 });
     won ? byDivision.get(divKey)!.wins++ : byDivision.get(divKey)!.losses++;
 
-    // Nach Belag
     const bKey = g.belag ?? "Sonstige";
     if (!byBelag.has(bKey)) byBelag.set(bKey, { wins: 0, losses: 0 });
     won ? byBelag.get(bKey)!.wins++ : byBelag.get(bKey)!.losses++;
 
-    // Nach Jahr
     byYear.set(g.jahr, (byYear.get(g.jahr) ?? 0) + 1);
 
-    // Universe Points (1 Punkt Differenz)
-    if (Math.abs(diff) === 1) {
-      won ? upWins++ : upLosses++;
-    }
+    if (Math.abs(diff) === 1) { won ? upWins++ : upLosses++; }
   }
 
-  // Häufigster, Angst- und Lieblingsgegner
   const opponents = [...opponentMap.entries()]
     .map(([name, s]) => ({ name, ...s }))
     .filter((o) => o.games >= 2);
@@ -90,33 +93,25 @@ function computeStats(team: string, games: Game[]) {
   const mostFrequent = [...opponentMap.entries()]
     .sort((a, b) => b[1].games - a[1].games)[0];
 
-  const worstAgainst = opponents
-    .sort((a, b) => (a.wins / a.games) - (b.wins / b.games))[0];
-
-  const bestAgainst = opponents
-    .sort((a, b) => (b.wins / b.games) - (a.wins / a.games))[0];
+  const worstAgainst = [...opponents]
+    .sort((a, b) => (a.wins / a.games) - (b.wins / b.games))[0] ?? null;
+  const bestAgainst = [...opponents]
+    .sort((a, b) => (b.wins / b.games) - (a.wins / a.games))[0] ?? null;
 
   return {
     total, wins, losses,
     winRate: total ? Math.round((wins / total) * 100) : 0,
     scored, conceded,
     avgDiff: total ? Math.round(((scored - conceded) / total) * 10) / 10 : 0,
-    mostFrequent: mostFrequent
-      ? { name: mostFrequent[0], games: mostFrequent[1].games }
-      : null,
-    worstAgainst: worstAgainst ?? null,
-    bestAgainst: bestAgainst ?? null,
+    mostFrequent: mostFrequent ? { name: mostFrequent[0], games: mostFrequent[1].games } : null,
+    worstAgainst, bestAgainst,
     biggestWin, biggestLoss,
     byDivision: Object.fromEntries(byDivision),
     byBelag:    Object.fromEntries(byBelag),
     byYear: [...byYear.entries()].sort((a, b) => a[0] - b[0]).map(([year, count]) => ({ year, count })),
     universePoints: {
-      wins: upWins,
-      losses: upLosses,
-      total: upWins + upLosses,
-      winRate: upWins + upLosses > 0
-        ? Math.round((upWins / (upWins + upLosses)) * 100)
-        : 0,
+      wins: upWins, losses: upLosses, total: upWins + upLosses,
+      winRate: upWins + upLosses > 0 ? Math.round((upWins / (upWins + upLosses)) * 100) : 0,
     },
   };
 }

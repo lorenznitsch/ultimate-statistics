@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import FilterBar, { type FilterValues } from "@/components/FilterBar";
 import type { Game } from "@/lib/types";
 
+const DIVISIONS = ["Masters Mixed", "Masters Open", "Masters Frauen", "Mixed", "Frauen", "Open", "Jugend"];
+
+const EMPTY_FILTER: FilterValues = { jahre: [], division: "", belag: "", teamNr: null };
+
 function BelagBadge({ belag }: { belag: string | null }) {
   const map: Record<string, string> = {
     Outdoor: "bg-green-100 text-green-700",
@@ -23,7 +27,8 @@ export default function H2HPage() {
   const [teamB,   setTeamB]   = useState("");
   const [games,   setGames]   = useState<Game[]>([]);
   const [jahre,   setJahre]   = useState<number[]>([]);
-  const [filter,  setFilter]  = useState<FilterValues>({ jahre: [], division: "", belag: "" });
+  const [teamNrs, setTeamNrs] = useState<number[]>([]);
+  const [filter,  setFilter]  = useState<FilterValues>(EMPTY_FILTER);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -37,36 +42,37 @@ export default function H2HPage() {
     setLoading(true);
     const params = new URLSearchParams({ teamA: a, teamB: b });
     f.jahre.forEach((j) => params.append("jahr", String(j)));
-    if (f.division) params.set("division", f.division);
-    if (f.belag)    params.set("belag",    f.belag);
-    const res = await fetch(`/api/h2h?${params}`);
+    if (f.division)      params.set("division", f.division);
+    if (f.belag)         params.set("belag",    f.belag);
+    if (f.teamNr !== null) params.set("teamNr", String(f.teamNr));
+
+    const res  = await fetch(`/api/h2h?${params}`);
     const data = await res.json();
-    const gs = Array.isArray(data) ? data as Game[] : [];
+    const gs   = Array.isArray(data) ? (data as Game[]) : [];
     setGames(gs);
-    const js = [...new Set(gs.map((g) => g.jahr))].sort((a, b) => b - a);
-    setJahre(js);
+
+    if (!f.jahre.length && !f.division && !f.belag && f.teamNr === null) {
+      setJahre([...new Set(gs.map((g) => g.jahr))].sort((x, y) => y - x));
+      const nrs = new Set<number>();
+      gs.forEach((g) => { nrs.add(g.home_team_nr ?? 1); nrs.add(g.away_team_nr ?? 1); });
+      setTeamNrs([...nrs].filter((n) => n > 1).sort()); // nur wenn > 1 relevant
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (teamA && teamB) loadGames(teamA, teamB, filter);
+    if (teamA && teamB) { setFilter(EMPTY_FILTER); loadGames(teamA, teamB, EMPTY_FILTER); }
   }, [teamA, teamB]);
 
-  function handleFilter(f: FilterValues) {
-    setFilter(f);
-    loadGames(teamA, teamB, f);
-  }
+  function handleFilter(f: FilterValues) { setFilter(f); loadGames(teamA, teamB, f); }
 
-  // Bilanz berechnen
   let winsA = 0, winsB = 0, pointsA = 0, pointsB = 0;
   for (const g of games) {
-    const isAHome  = g.home_base === teamA;
-    const scoreA   = isAHome ? g.home_score : g.away_score;
-    const scoreB   = isAHome ? g.away_score : g.home_score;
-    pointsA += scoreA;
-    pointsB += scoreB;
-    if (scoreA > scoreB) winsA++;
-    else if (scoreB > scoreA) winsB++;
+    const isAHome = g.home_base === teamA;
+    const sA = isAHome ? g.home_score : g.away_score;
+    const sB = isAHome ? g.away_score : g.home_score;
+    pointsA += sA; pointsB += sB;
+    if (sA > sB) winsA++; else if (sB > sA) winsB++;
   }
 
   return (
@@ -76,7 +82,6 @@ export default function H2HPage() {
         <p className="text-gray-500 mt-1">Direktvergleich zweier Vereine</p>
       </div>
 
-      {/* Team-Auswahl */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
           { label: "Team A", value: teamA, set: setTeamA, exclude: teamB },
@@ -100,7 +105,6 @@ export default function H2HPage() {
 
       {teamA && teamB && (
         <>
-          {/* Bilanz-Karte */}
           <div className="bg-[#006B5E] text-white rounded-2xl p-6 text-center shadow-lg">
             <div className="text-sm font-medium text-white/70 mb-2">{games.length} Duelle gesamt</div>
             <div className="flex items-center justify-center gap-6">
@@ -115,24 +119,24 @@ export default function H2HPage() {
               </div>
             </div>
             <div className="mt-4 text-sm text-white/60">
-              Punkte gesamt: <span className="text-white font-semibold">{pointsA}</span>
-              {" "}:{" "}
+              Punkte gesamt:{" "}
+              <span className="text-white font-semibold">{pointsA}</span> :{" "}
               <span className="text-white font-semibold">{pointsB}</span>
             </div>
           </div>
 
-          {/* Filter */}
           <FilterBar
             jahre={jahre}
             selectedJahre={filter.jahre}
-            divisionen={["Mixed", "Frauen", "Open", "Jugend"]}
+            divisionen={DIVISIONS}
             selectedDiv={filter.division}
             belaege={["Outdoor", "Indoor", "Beach"]}
             selectedBelag={filter.belag}
+            teamNrs={teamNrs}
+            selectedTeamNr={filter.teamNr}
             onChange={handleFilter}
           />
 
-          {/* Spiel-Liste */}
           {loading ? (
             <div className="text-center py-8 text-gray-400">Lade…</div>
           ) : games.length === 0 ? (
@@ -140,15 +144,14 @@ export default function H2HPage() {
           ) : (
             <div className="space-y-2">
               {games.map((g) => {
-                const isAHome  = g.home_base === teamA;
-                const scoreA   = isAHome ? g.home_score : g.away_score;
-                const scoreB   = isAHome ? g.away_score : g.home_score;
-                const aWon     = scoreA > scoreB;
-
+                const isAHome = g.home_base === teamA;
+                const sA = isAHome ? g.home_score : g.away_score;
+                const sB = isAHome ? g.away_score : g.home_score;
+                const aWon = sA > sB;
                 return (
                   <div key={g.id} className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-500">{g.division}</div>
+                      <div className="text-sm text-gray-500 truncate">{g.division}</div>
                       <div className="flex flex-wrap gap-1 mt-1">
                         <BelagBadge belag={g.belag} />
                         {g.pool && (
@@ -160,9 +163,9 @@ export default function H2HPage() {
                     </div>
                     <div className="text-center flex-shrink-0">
                       <div className="font-mono text-xl font-bold">
-                        <span className={aWon ? "text-green-600" : "text-red-500"}>{scoreA}</span>
+                        <span className={aWon ? "text-green-600" : "text-red-500"}>{sA}</span>
                         {" : "}
-                        <span className={!aWon ? "text-green-600" : "text-red-500"}>{scoreB}</span>
+                        <span className={!aWon ? "text-green-600" : "text-red-500"}>{sB}</span>
                       </div>
                       <div className="text-xs text-gray-400">{g.jahr}</div>
                     </div>

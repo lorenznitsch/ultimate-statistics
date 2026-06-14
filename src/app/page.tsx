@@ -5,6 +5,7 @@ import FilterBar, { type FilterValues } from "@/components/FilterBar";
 import type { Game } from "@/lib/types";
 
 const DEFAULT_TEAM = "Hucks Ultimate Club Berlin";
+const DIVISIONS = ["Masters Mixed", "Masters Open", "Masters Frauen", "Mixed", "Frauen", "Open", "Jugend"];
 
 function BelagBadge({ belag }: { belag: string | null }) {
   const map: Record<string, string> = {
@@ -12,12 +13,24 @@ function BelagBadge({ belag }: { belag: string | null }) {
     Indoor:  "bg-blue-100 text-blue-700",
     Beach:   "bg-yellow-100 text-yellow-700",
   };
-  const cls = map[belag ?? ""] ?? "bg-gray-100 text-gray-600";
-  return <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{belag ?? "–"}</span>;
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${map[belag ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
+      {belag ?? "–"}
+    </span>
+  );
 }
 
 function DivBadge({ div }: { div: string | null }) {
   return <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{div ?? "–"}</span>;
+}
+
+function TeamNrBadge({ nr }: { nr: number }) {
+  if (nr <= 1) return null;
+  return (
+    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">
+      Team {nr}
+    </span>
+  );
 }
 
 export default function HomePage() {
@@ -26,13 +39,15 @@ export default function HomePage() {
   const [games,    setGames]    = useState<Game[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [jahre,    setJahre]    = useState<number[]>([]);
-  const [filter,   setFilter]   = useState<FilterValues>({ jahre: [], division: "", belag: "" });
+  const [teamNrs,  setTeamNrs]  = useState<number[]>([]);
+  const [filter,   setFilter]   = useState<FilterValues>({
+    jahre: [], division: "", belag: "", teamNr: null,
+  });
 
-  // Teamnamen einmalig laden
   useEffect(() => {
-    fetch("/api/teams")
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setAllTeams(d); });
+    fetch("/api/teams").then((r) => r.json()).then((d) => {
+      if (Array.isArray(d)) setAllTeams(d);
+    });
   }, []);
 
   const load = useCallback(async (selectedTeam: string, f: FilterValues) => {
@@ -43,21 +58,27 @@ export default function HomePage() {
     f.jahre.forEach((j) => params.append("jahr", String(j)));
     if (f.division) params.set("division", f.division);
     if (f.belag)    params.set("belag",    f.belag);
+    if (f.teamNr !== null) params.set("teamNr", String(f.teamNr));
 
     const res  = await fetch(`/api/games?${params}`);
     const data = await res.json();
     const gs   = Array.isArray(data) ? (data as Game[]) : [];
     setGames(gs);
-    // Jahre-Filter nur beim ungefilterten Laden aktualisieren
-    if (!f.jahre.length && !f.division && !f.belag) {
-      const js = [...new Set(gs.map((g) => g.jahr))].sort((a, b) => b - a);
-      setJahre(js);
+
+    // Jahre + TeamNrs nur beim ungefilterten Laden aktualisieren
+    if (!f.jahre.length && !f.division && !f.belag && f.teamNr === null) {
+      setJahre([...new Set(gs.map((g) => g.jahr))].sort((a, b) => b - a));
+      const nrs = new Set<number>();
+      gs.forEach((g) => {
+        if (g.home_base === selectedTeam) nrs.add(g.home_team_nr ?? 1);
+        else nrs.add(g.away_team_nr ?? 1);
+      });
+      setTeamNrs([...nrs].sort());
     }
     setLoading(false);
   }, []);
 
-  // Neu laden wenn Team oder Filter sich ändert
-  useEffect(() => { load(team, filter); }, [team]);
+  useEffect(() => { load(team, { jahre: [], division: "", belag: "", teamNr: null }); }, [team]);
 
   function handleFilter(f: FilterValues) {
     setFilter(f);
@@ -66,8 +87,10 @@ export default function HomePage() {
 
   function handleTeamChange(newTeam: string) {
     setTeam(newTeam);
-    setFilter({ jahre: [], division: "", belag: "" });
+    const fresh: FilterValues = { jahre: [], division: "", belag: "", teamNr: null };
+    setFilter(fresh);
     setJahre([]);
+    setTeamNrs([]);
   }
 
   const wins   = games.filter((g) => {
@@ -78,7 +101,6 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Übersicht</h1>
         <p className="text-gray-500 mt-1">Alle Spiele eines Vereins</p>
@@ -92,12 +114,8 @@ export default function HomePage() {
           onChange={(e) => handleTeamChange(e.target.value)}
           className="w-full sm:w-80 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#006B5E]/40 focus:border-[#006B5E]"
         >
-          {allTeams.length === 0 && (
-            <option value={DEFAULT_TEAM}>{DEFAULT_TEAM}</option>
-          )}
-          {allTeams.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
+          {allTeams.length === 0 && <option value={DEFAULT_TEAM}>{DEFAULT_TEAM}</option>}
+          {allTeams.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
 
@@ -117,36 +135,37 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* FilterBar */}
       <FilterBar
         jahre={jahre}
         selectedJahre={filter.jahre}
-        divisionen={["Masters Mixed", "Masters Open", "Masters Frauen", "Mixed", "Frauen", "Open", "Jugend"]}
+        divisionen={DIVISIONS}
         selectedDiv={filter.division}
         belaege={["Outdoor", "Indoor", "Beach"]}
         selectedBelag={filter.belag}
+        teamNrs={teamNrs}
+        selectedTeamNr={filter.teamNr}
         onChange={handleFilter}
       />
 
-      {/* Spielliste */}
       {loading ? (
         <div className="text-center py-16 text-gray-400">Lade Daten…</div>
       ) : games.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           Keine Spiele gefunden.{" "}
           {allTeams.length === 0 && (
-            <>Importiere zuerst CSV-Daten unter <a href="/import" className="text-[#006B5E] underline">/import</a>.</>
+            <>Importiere Daten unter <a href="/import" className="text-[#006B5E] underline">/import</a>.</>
           )}
         </div>
       ) : (
         <div className="space-y-2">
           {games.map((g) => {
-            const isHome   = g.home_base === team;
-            const my       = isHome ? g.home_score : g.away_score;
-            const op       = isHome ? g.away_score : g.home_score;
-            const won      = my > op;
-            const opponent = isHome ? g.away_base : g.home_base;
+            const isHome    = g.home_base === team;
+            const my        = isHome ? g.home_score : g.away_score;
+            const op        = isHome ? g.away_score : g.home_score;
+            const won       = my > op;
+            const opponent  = isHome ? g.away_base : g.home_base;
             const oppDetail = isHome ? g.away : g.home;
+            const myTeamNr  = isHome ? (g.home_team_nr ?? 1) : (g.away_team_nr ?? 1);
 
             return (
               <div
@@ -156,9 +175,12 @@ export default function HomePage() {
                 }`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-900 truncate">{opponent}</div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900 truncate">{opponent}</span>
+                    {myTeamNr > 1 && <TeamNrBadge nr={myTeamNr} />}
+                  </div>
                   {oppDetail !== opponent && (
-                    <div className="text-xs text-gray-400 truncate">{oppDetail}</div>
+                    <div className="text-xs text-gray-400 truncate mt-0.5">{oppDetail}</div>
                   )}
                   <div className="flex flex-wrap gap-1 mt-1">
                     <DivBadge div={g.division_neu} />

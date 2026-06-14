@@ -2,6 +2,7 @@ import {
   normalizeTeam,
   deriveDivisionNeu,
   deriveBelag,
+  deriveTeamNr,
   transformRows,
   isAbgesagt,
   NEVER_STRIP,
@@ -158,6 +159,48 @@ describe("deriveDivisionNeu", () => {
 });
 
 // -------------------------------------------------------
+// deriveTeamNr
+// -------------------------------------------------------
+describe("deriveTeamNr", () => {
+  test("kein Suffix -> Team 1", () => {
+    expect(deriveTeamNr("Moskitos")).toBe(1);
+    expect(deriveTeamNr("Hucks Ultimate Club Berlin")).toBe(1);
+    expect(deriveTeamNr("Bonobos Bonobabes")).toBe(1);  // kein Zahlsuffix
+  });
+
+  test("arabische Ziffer 2-9", () => {
+    expect(deriveTeamNr("Moskitos 2")).toBe(2);
+    expect(deriveTeamNr("Berlin 3")).toBe(3);
+    expect(deriveTeamNr("Team 9")).toBe(9);
+  });
+
+  test("römische Nummern II/III/IV", () => {
+    expect(deriveTeamNr("Leipzig Open II")).toBe(2);
+    expect(deriveTeamNr("Leipzig Open III")).toBe(3);
+    expect(deriveTeamNr("MUC IV")).toBe(4);
+  });
+
+  test("IV wird vor III vor II erkannt (längste zuerst)", () => {
+    expect(deriveTeamNr("Funatics IV")).toBe(4);
+    expect(deriveTeamNr("Funatics III")).toBe(3);
+  });
+
+  test("NEVER_STRIP: Göttinger 7 ist Team 1", () => {
+    expect(deriveTeamNr("Göttinger 7")).toBe(1);
+  });
+
+  test("einzelnes 'I' am Ende ist keine Teamnummer", () => {
+    expect(deriveTeamNr("Berlin I")).toBe(1);
+  });
+
+  test("Alias-Originalnamen ohne Zahlsuffix -> Team 1", () => {
+    expect(deriveTeamNr("Bonobos Bonobabes")).toBe(1);
+    expect(deriveTeamNr("Frizzly Bears Bären")).toBe(1);
+    expect(deriveTeamNr("Caracals Caramba")).toBe(1);
+  });
+});
+
+// -------------------------------------------------------
 // deriveBelag
 // -------------------------------------------------------
 describe("deriveBelag", () => {
@@ -244,5 +287,13 @@ describe("transformRows", () => {
   test("originale Namen bleiben erhalten", () => {
     expect(result[0].home).toBe("Moskitos 2");
     expect(result[0].away).toBe("Bonobos Bonobabes");
+  });
+
+  test("Teamnummern korrekt abgeleitet", () => {
+    expect(result[0].home_team_nr).toBe(2);  // Moskitos 2 -> 2
+    expect(result[0].away_team_nr).toBe(1);  // Bonobos Bonobabes (Alias) -> 1
+    expect(result[1].home_team_nr).toBe(1);  // Göttinger 7 (NEVER_STRIP) -> 1
+    expect(result[1].away_team_nr).toBe(2);  // Leipzig Open II -> 2
+    expect(result[2].away_team_nr).toBe(2);  // MUC II -> 2
   });
 });
